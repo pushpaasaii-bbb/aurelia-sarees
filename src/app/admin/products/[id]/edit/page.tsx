@@ -3,68 +3,119 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, LoaderCircle, Save } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import {
+  AlertTriangle,
+  ArrowLeft,
+  LoaderCircle,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import ProductImageGalleryManager from "@/components/admin/ProductImageGalleryManager";
 
-type Category = { id: string; name: string };
+const productSchema = z.object({
+  title: z.string().trim().min(3, "Enter a product title."),
+  slug: z
+    .string()
+    .trim()
+    .min(3, "Enter a URL slug.")
+    .regex(
+      /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
+      "Use lowercase letters and hyphens only."
+    ),
+  description: z.string().trim().min(10, "Enter a short description."),
+  price: z
+    .string()
+    .refine((value) => Number(value) > 0, "Enter a valid selling price."),
+  original_price: z.string(),
+  stock_quantity: z
+    .string()
+    .regex(/^\d+$/, "Enter a valid stock quantity."),
+  low_stock_threshold: z
+    .string()
+    .regex(/^\d+$/, "Enter a valid low-stock quantity."),
+  category_id: z.string().min(1, "Choose a collection."),
+  fabric: z.string().trim().min(2, "Enter the fabric."),
+  colour: z.string().trim().min(2, "Enter the colour."),
+  occasion: z.string().trim().min(2, "Enter the occasion."),
+  work_details: z.string(),
+  saree_length: z.string(),
+  blouse_piece: z.string(),
+  care_instructions: z.string(),
+  dispatch_timeline: z.string(),
+  status: z.enum(["active", "hidden", "discontinued", "sold_out"]),
+  featured: z.boolean(),
+  is_new_arrival: z.boolean(),
+  is_best_seller: z.boolean(),
+});
 
-type FormData = {
-  title: string;
-  slug: string;
-  description: string;
-  price: string;
-  original_price: string;
-  stock_quantity: string;
-  low_stock_threshold: string;
-  category_id: string;
-  fabric: string;
-  colour: string;
-  occasion: string;
-  work_details: string;
-  saree_length: string;
-  blouse_piece: string;
-  care_instructions: string;
-  dispatch_timeline: string;
-  status: "active" | "hidden" | "discontinued" | "sold_out";
-  featured: boolean;
-  is_new_arrival: boolean;
-  is_best_seller: boolean;
+type ProductFormValues = z.infer<typeof productSchema>;
+
+type Category = {
+  id: string;
+  name: string;
 };
 
-const emptyForm: FormData = {
-  title: "",
-  slug: "",
-  description: "",
-  price: "",
-  original_price: "",
-  stock_quantity: "0",
-  low_stock_threshold: "3",
-  category_id: "",
-  fabric: "",
-  colour: "",
-  occasion: "",
-  work_details: "",
-  saree_length: "",
-  blouse_piece: "",
-  care_instructions: "",
-  dispatch_timeline: "",
-  status: "active",
-  featured: false,
-  is_new_arrival: false,
-  is_best_seller: false,
-};
+function getStoragePathFromPublicUrl(imageUrl: string) {
+  const marker = "/storage/v1/object/public/product-images/";
+  const index = imageUrl.indexOf(marker);
+
+  if (index === -1) {
+    return null;
+  }
+
+  return decodeURIComponent(imageUrl.slice(index + marker.length));
+}
 
 export default function EditProductPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
+  const productId = params.id;
+
   const [categories, setCategories] = useState<Category[]>([]);
-  const [form, setForm] = useState<FormData>(emptyForm);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [error, setError] = useState("");
+  const [isCheckingAdmin, setIsCheckingAdmin] = useState(true);
+  const [formError, setFormError] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<ProductFormValues>({
+    resolver: zodResolver(productSchema),
+    defaultValues: {
+      title: "",
+      slug: "",
+      description: "",
+      price: "",
+      original_price: "",
+      stock_quantity: "0",
+      low_stock_threshold: "3",
+      category_id: "",
+      fabric: "",
+      colour: "",
+      occasion: "",
+      work_details: "",
+      saree_length: "",
+      blouse_piece: "",
+      care_instructions: "",
+      dispatch_timeline: "",
+      status: "active",
+      featured: false,
+      is_new_arrival: false,
+      is_best_seller: false,
+    },
+  });
+
+  const productTitle = watch("title");
 
   useEffect(() => {
-    async function loadPage() {
+    async function loadProduct() {
       const supabase = createClient();
 
       const {
@@ -72,7 +123,7 @@ export default function EditProductPage() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        router.replace(`/login?next=/admin/products/${params.id}/edit`);
+        router.replace(`/login?next=/admin/products/${productId}/edit`);
         return;
       }
 
@@ -83,116 +134,101 @@ export default function EditProductPage() {
         return;
       }
 
-      const [{ data: product }, { data: categoryData }] = await Promise.all([
-        supabase.from("products").select("*").eq("id", params.id).single(),
-        supabase.from("categories").select("id, name").order("sort_order"),
+      const [productResult, categoriesResult] = await Promise.all([
+        supabase.from("products").select("*").eq("id", productId).single(),
+        supabase
+          .from("categories")
+          .select("id, name")
+          .order("sort_order", { ascending: true }),
       ]);
 
-      if (!product) {
+      if (!productResult.data) {
         router.replace("/admin/products");
         return;
       }
 
-      setCategories(categoryData ?? []);
-      setForm({
-        title: product.title ?? "",
-        slug: product.slug ?? "",
-        description: product.description ?? "",
-        price: String(product.price ?? ""),
-        original_price: product.original_price ? String(product.original_price) : "",
-        stock_quantity: String(product.stock_quantity ?? 0),
-        low_stock_threshold: String(product.low_stock_threshold ?? 3),
-        category_id: product.category_id ?? "",
-        fabric: product.fabric ?? "",
-        colour: product.colour ?? "",
-        occasion: product.occasion ?? "",
-        work_details: product.work_details ?? "",
-        saree_length: product.saree_length ?? "",
-        blouse_piece: product.blouse_piece ?? "",
-        care_instructions: product.care_instructions ?? "",
-        dispatch_timeline: product.dispatch_timeline ?? "",
-        status: product.status,
-        featured: product.featured ?? false,
-        is_new_arrival: product.is_new_arrival ?? false,
-        is_best_seller: product.is_best_seller ?? false,
-      });
+      const product = productResult.data;
 
-      setIsLoading(false);
+      setCategories(categoriesResult.data ?? []);
+      setValue("title", product.title ?? "");
+      setValue("slug", product.slug ?? "");
+      setValue("description", product.description ?? "");
+      setValue("price", String(product.price ?? ""));
+      setValue(
+        "original_price",
+        product.original_price ? String(product.original_price) : ""
+      );
+      setValue("stock_quantity", String(product.stock_quantity ?? 0));
+      setValue(
+        "low_stock_threshold",
+        String(product.low_stock_threshold ?? 3)
+      );
+      setValue("category_id", product.category_id ?? "");
+      setValue("fabric", product.fabric ?? "");
+      setValue("colour", product.colour ?? "");
+      setValue("occasion", product.occasion ?? "");
+      setValue("work_details", product.work_details ?? "");
+      setValue("saree_length", product.saree_length ?? "");
+      setValue("blouse_piece", product.blouse_piece ?? "");
+      setValue("care_instructions", product.care_instructions ?? "");
+      setValue("dispatch_timeline", product.dispatch_timeline ?? "");
+      setValue(
+        "status",
+        product.status as ProductFormValues["status"]
+      );
+      setValue("featured", product.featured ?? false);
+      setValue("is_new_arrival", product.is_new_arrival ?? false);
+      setValue("is_best_seller", product.is_best_seller ?? false);
+
+      setIsCheckingAdmin(false);
     }
 
-    loadPage();
-  }, [params.id, router]);
+    loadProduct();
+  }, [productId, router, setValue]);
 
-  function updateField<K extends keyof FormData>(key: K, value: FormData[K]) {
-    setForm((current) => ({ ...current, [key]: value }));
-  }
+  async function onSubmit(values: ProductFormValues) {
+    setFormError("");
 
-  async function handleSave(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
+    const price = Number(values.price);
+    const originalPrice = values.original_price
+      ? Number(values.original_price)
+      : null;
 
-    if (
-      !form.title ||
-      !form.slug ||
-      !form.description ||
-      !form.category_id ||
-      !form.fabric ||
-      !form.colour ||
-      !form.occasion
-    ) {
-      setError("Please complete all required fields.");
+    if (originalPrice !== null && originalPrice < price) {
+      setFormError("Original price cannot be lower than the selling price.");
       return;
     }
-
-    if (Number(form.price) <= 0 || Number(form.stock_quantity) < 0) {
-      setError("Enter a valid selling price and stock quantity.");
-      return;
-    }
-
-    if (
-      form.original_price &&
-      Number(form.original_price) < Number(form.price)
-    ) {
-      setError("Original price cannot be lower than selling price.");
-      return;
-    }
-
-    setIsSaving(true);
 
     const supabase = createClient();
 
     const { error: updateError } = await supabase
       .from("products")
       .update({
-        title: form.title.trim(),
-        slug: form.slug.trim(),
-        description: form.description.trim(),
-        price: Number(form.price),
-        original_price: form.original_price
-          ? Number(form.original_price)
-          : null,
-        stock_quantity: Number(form.stock_quantity),
-        low_stock_threshold: Number(form.low_stock_threshold),
-        category_id: form.category_id,
-        fabric: form.fabric.trim(),
-        colour: form.colour.trim(),
-        occasion: form.occasion.trim(),
-        work_details: form.work_details.trim() || null,
-        saree_length: form.saree_length.trim() || null,
-        blouse_piece: form.blouse_piece.trim() || null,
-        care_instructions: form.care_instructions.trim() || null,
-        dispatch_timeline: form.dispatch_timeline.trim() || null,
-        status: form.status,
-        featured: form.featured,
-        is_new_arrival: form.is_new_arrival,
-        is_best_seller: form.is_best_seller,
+        title: values.title.trim(),
+        slug: values.slug.trim(),
+        description: values.description.trim(),
+        price,
+        original_price: originalPrice,
+        stock_quantity: Number(values.stock_quantity),
+        low_stock_threshold: Number(values.low_stock_threshold),
+        category_id: values.category_id,
+        fabric: values.fabric.trim(),
+        colour: values.colour.trim(),
+        occasion: values.occasion.trim(),
+        work_details: values.work_details.trim() || null,
+        saree_length: values.saree_length.trim() || null,
+        blouse_piece: values.blouse_piece.trim() || null,
+        care_instructions: values.care_instructions.trim() || null,
+        dispatch_timeline: values.dispatch_timeline.trim() || null,
+        status: values.status,
+        featured: values.featured,
+        is_new_arrival: values.is_new_arrival,
+        is_best_seller: values.is_best_seller,
       })
-      .eq("id", params.id);
-
-    setIsSaving(false);
+      .eq("id", productId);
 
     if (updateError) {
-      setError(updateError.message);
+      setFormError(updateError.message);
       return;
     }
 
@@ -200,7 +236,100 @@ export default function EditProductPage() {
     router.refresh();
   }
 
-  if (isLoading) {
+  async function handlePermanentDelete() {
+    const confirmed = window.confirm(
+      "Permanently delete this saree? This cannot be undone. Products with past orders cannot be deleted."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setFormError("");
+    setIsDeleting(true);
+
+    const supabase = createClient();
+
+    const { count: orderItemCount, error: orderCheckError } = await supabase
+      .from("order_items")
+      .select("*", { count: "exact", head: true })
+      .eq("product_id", productId);
+
+    if (orderCheckError) {
+      setFormError(orderCheckError.message);
+      setIsDeleting(false);
+      return;
+    }
+
+    if ((orderItemCount ?? 0) > 0) {
+      setFormError(
+        "This saree is part of past orders, so it cannot be permanently deleted. Change its status to Discontinued instead."
+      );
+      setIsDeleting(false);
+      return;
+    }
+
+    const { data: imageRows, error: imagesReadError } = await supabase
+      .from("product_images")
+      .select("id, image_url")
+      .eq("product_id", productId);
+
+    if (imagesReadError) {
+      setFormError(imagesReadError.message);
+      setIsDeleting(false);
+      return;
+    }
+
+    const [cartResult, wishlistResult] = await Promise.all([
+      supabase.from("cart_items").delete().eq("product_id", productId),
+      supabase.from("wishlist_items").delete().eq("product_id", productId),
+    ]);
+
+    if (cartResult.error || wishlistResult.error) {
+      setFormError(
+        cartResult.error?.message ??
+          wishlistResult.error?.message ??
+          "Could not remove this saree from customer carts."
+      );
+      setIsDeleting(false);
+      return;
+    }
+
+    const { error: imageDeleteError } = await supabase
+      .from("product_images")
+      .delete()
+      .eq("product_id", productId);
+
+    if (imageDeleteError) {
+      setFormError(imageDeleteError.message);
+      setIsDeleting(false);
+      return;
+    }
+
+    const { error: productDeleteError } = await supabase
+      .from("products")
+      .delete()
+      .eq("id", productId);
+
+    if (productDeleteError) {
+      setFormError(productDeleteError.message);
+      setIsDeleting(false);
+      return;
+    }
+
+    const storagePaths = (imageRows ?? [])
+      .map((image) => getStoragePathFromPublicUrl(image.image_url))
+      .filter((path): path is string => Boolean(path));
+
+    if (storagePaths.length > 0) {
+      await supabase.storage.from("product-images").remove(storagePaths);
+    }
+
+    router.replace("/admin/products");
+    router.refresh();
+  }
+
+  if (isCheckingAdmin) {
     return (
       <main className="grid min-h-screen place-items-center bg-[#FAF7F2]">
         <LoaderCircle size={28} className="animate-spin text-[#6E1834]" />
@@ -208,7 +337,7 @@ export default function EditProductPage() {
     );
   }
 
-  const textFields: Array<[keyof FormData, string, string]> = [
+  const details = [
     ["fabric", "Fabric", "Pure Silk"],
     ["colour", "Colour", "Crimson Red"],
     ["occasion", "Occasion", "Wedding, Festive, Party"],
@@ -217,13 +346,16 @@ export default function EditProductPage() {
     ["blouse_piece", "Blouse piece", "Included"],
     ["care_instructions", "Care instructions", "Dry clean only"],
     ["dispatch_timeline", "Dispatch timeline", "Dispatches within 2–3 days"],
-  ];
+  ] as const;
 
   return (
     <main className="min-h-screen bg-[#FAF7F2] pb-16 text-[#1F1B1B]">
       <header className="border-b border-[#E6DACA] bg-[#4A0F22] text-white">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
-          <Link href="/admin" className="font-serif text-2xl tracking-[0.12em]">
+          <Link
+            href="/admin"
+            className="font-serif text-2xl tracking-[0.12em]"
+          >
             AURELIA
           </Link>
           <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#E9C98B]">
@@ -244,50 +376,67 @@ export default function EditProductPage() {
           Edit Saree
         </h1>
         <p className="mt-2 text-sm text-[#6E1834]/70">
-          Update product details and exact live stock quantity.
+          Update product details, multiple product photos, and live stock.
         </p>
 
-        <form onSubmit={handleSave} className="mt-9 space-y-8">
+        <form onSubmit={handleSubmit(onSubmit)} className="mt-9 space-y-8">
           <section className="border border-[#E6DACA] bg-[#FFFDF9] p-5 sm:p-7">
-            <h2 className="font-serif text-3xl text-[#4A0F22]">Product Basics</h2>
+            <h2 className="font-serif text-3xl text-[#4A0F22]">
+              Product Basics
+            </h2>
 
             <div className="mt-6 grid gap-5 md:grid-cols-2">
-              {[
-                ["title", "Product title"],
-                ["slug", "URL slug"],
-              ].map(([field, label]) => (
-                <label
-                  key={field}
-                  className="text-xs font-bold uppercase tracking-[0.12em]"
-                >
-                  {label}
-                  <input
-                    value={form[field as "title" | "slug"]}
-                    onChange={(event) =>
-                      updateField(
-                        field as "title" | "slug",
-                        event.target.value
-                      )
-                    }
-                    className="mt-2 block h-12 w-full border border-[#DCCCB9] bg-white px-4 text-sm outline-none focus:border-[#6E1834]"
-                  />
+              <div>
+                <label className="text-xs font-bold uppercase tracking-[0.12em]">
+                  Product title
                 </label>
-              ))}
+                <input
+                  {...register("title")}
+                  className="mt-2 h-12 w-full border border-[#DCCCB9] bg-white px-4 text-sm outline-none focus:border-[#6E1834]"
+                />
+                {errors.title && (
+                  <p className="mt-2 text-xs text-red-700">
+                    {errors.title.message}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-[0.12em]">
+                  URL slug
+                </label>
+                <input
+                  {...register("slug")}
+                  className="mt-2 h-12 w-full border border-[#DCCCB9] bg-white px-4 text-sm outline-none focus:border-[#6E1834]"
+                />
+                {errors.slug && (
+                  <p className="mt-2 text-xs text-red-700">
+                    {errors.slug.message}
+                  </p>
+                )}
+              </div>
             </div>
 
             <label className="mt-5 block text-xs font-bold uppercase tracking-[0.12em]">
               Description
               <textarea
-                value={form.description}
-                onChange={(event) => updateField("description", event.target.value)}
+                {...register("description")}
                 rows={4}
                 className="mt-2 block w-full border border-[#DCCCB9] bg-white p-4 text-sm outline-none focus:border-[#6E1834]"
               />
             </label>
+
+            {errors.description && (
+              <p className="mt-2 text-xs text-red-700">
+                {errors.description.message}
+              </p>
+            )}
           </section>
 
           <section className="border border-[#E6DACA] bg-[#FFFDF9] p-5 sm:p-7">
-            <h2 className="font-serif text-3xl text-[#4A0F22]">Price & Inventory</h2>
+            <h2 className="font-serif text-3xl text-[#4A0F22]">
+              Price & Inventory
+            </h2>
 
             <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
               {[
@@ -302,28 +451,16 @@ export default function EditProductPage() {
                 >
                   {label}
                   <input
+                    {...register(
+                      field as
+                        | "price"
+                        | "original_price"
+                        | "stock_quantity"
+                        | "low_stock_threshold"
+                    )}
                     type="number"
                     min="0"
                     inputMode="numeric"
-                    value={
-                      form[
-                        field as
-                          | "price"
-                          | "original_price"
-                          | "stock_quantity"
-                          | "low_stock_threshold"
-                      ]
-                    }
-                    onChange={(event) =>
-                      updateField(
-                        field as
-                          | "price"
-                          | "original_price"
-                          | "stock_quantity"
-                          | "low_stock_threshold",
-                        event.target.value
-                      )
-                    }
                     className="mt-2 block h-12 w-full border border-[#DCCCB9] bg-white px-4 text-sm outline-none focus:border-[#6E1834]"
                   />
                 </label>
@@ -332,14 +469,15 @@ export default function EditProductPage() {
           </section>
 
           <section className="border border-[#E6DACA] bg-[#FFFDF9] p-5 sm:p-7">
-            <h2 className="font-serif text-3xl text-[#4A0F22]">Saree Details</h2>
+            <h2 className="font-serif text-3xl text-[#4A0F22]">
+              Saree Details
+            </h2>
 
             <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               <label className="text-xs font-bold uppercase tracking-[0.12em]">
                 Collection
                 <select
-                  value={form.category_id}
-                  onChange={(event) => updateField("category_id", event.target.value)}
+                  {...register("category_id")}
                   className="mt-2 block h-12 w-full border border-[#DCCCB9] bg-white px-4 text-sm outline-none"
                 >
                   <option value="">Choose collection</option>
@@ -351,16 +489,15 @@ export default function EditProductPage() {
                 </select>
               </label>
 
-              {textFields.map(([field, label, placeholder]) => (
+              {details.map(([field, label, placeholder]) => (
                 <label
                   key={field}
                   className="text-xs font-bold uppercase tracking-[0.12em]"
                 >
                   {label}
                   <input
-                    value={form[field] as string}
+                    {...register(field)}
                     placeholder={placeholder}
-                    onChange={(event) => updateField(field, event.target.value)}
                     className="mt-2 block h-12 w-full border border-[#DCCCB9] bg-white px-4 text-sm outline-none focus:border-[#6E1834]"
                   />
                 </label>
@@ -369,19 +506,33 @@ export default function EditProductPage() {
           </section>
 
           <section className="border border-[#E6DACA] bg-[#FFFDF9] p-5 sm:p-7">
-            <h2 className="font-serif text-3xl text-[#4A0F22]">Visibility</h2>
+            <h2 className="font-serif text-3xl text-[#4A0F22]">
+              Product Gallery
+            </h2>
+
+            <div className="mt-6">
+              <ProductImageGalleryManager
+                productId={productId}
+                productTitle={productTitle || "AURELIA Saree"}
+              />
+            </div>
+          </section>
+
+          <section className="border border-[#E6DACA] bg-[#FFFDF9] p-5 sm:p-7">
+            <h2 className="font-serif text-3xl text-[#4A0F22]">
+              Visibility
+            </h2>
 
             <div className="mt-6 grid gap-5 md:grid-cols-2">
               <label className="text-xs font-bold uppercase tracking-[0.12em]">
                 Product status
                 <select
-                  value={form.status}
-                  onChange={(event) =>
-                    updateField("status", event.target.value as FormData["status"])
-                  }
+                  {...register("status")}
                   className="mt-2 block h-12 w-full border border-[#DCCCB9] bg-white px-4 text-sm outline-none"
                 >
-                  <option value="active">Active — visible and purchasable</option>
+                  <option value="active">
+                    Active — visible and purchasable
+                  </option>
                   <option value="hidden">Hidden — admin only</option>
                   <option value="sold_out">Sold Out — not purchasable</option>
                   <option value="discontinued">Discontinued</option>
@@ -390,38 +541,78 @@ export default function EditProductPage() {
             </div>
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:gap-6">
-              {[
-                ["featured", "Featured product"],
-                ["is_new_arrival", "New arrival"],
-                ["is_best_seller", "Best seller"],
-              ].map(([field, label]) => (
-                <label key={field} className="flex items-center gap-3 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={
-                      form[
-                        field as "featured" | "is_new_arrival" | "is_best_seller"
-                      ]
-                    }
-                    onChange={(event) =>
-                      updateField(
-                        field as "featured" | "is_new_arrival" | "is_best_seller",
-                        event.target.checked
-                      )
-                    }
-                    className="size-4 accent-[#4A0F22]"
-                  />
-                  {label}
-                </label>
-              ))}
+              <label className="flex items-center gap-3 text-sm">
+                <input
+                  {...register("featured")}
+                  type="checkbox"
+                  className="size-4 accent-[#4A0F22]"
+                />
+                Featured product
+              </label>
+
+              <label className="flex items-center gap-3 text-sm">
+                <input
+                  {...register("is_new_arrival")}
+                  type="checkbox"
+                  className="size-4 accent-[#4A0F22]"
+                />
+                New arrival
+              </label>
+
+              <label className="flex items-center gap-3 text-sm">
+                <input
+                  {...register("is_best_seller")}
+                  type="checkbox"
+                  className="size-4 accent-[#4A0F22]"
+                />
+                Best seller
+              </label>
             </div>
           </section>
 
-          {error && (
+          {formError && (
             <p className="border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-              {error}
+              {formError}
             </p>
           )}
+
+          <section className="border border-red-200 bg-red-50 p-5 sm:p-7">
+            <div className="flex gap-3">
+              <AlertTriangle
+                size={22}
+                className="mt-0.5 shrink-0 text-red-700"
+              />
+              <div>
+                <h2 className="font-serif text-2xl text-[#4A0F22]">
+                  Danger zone
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-red-800/80">
+                  Permanently delete this saree only if it has never been
+                  ordered. Products with previous customer orders must be set
+                  to <strong>Discontinued</strong> instead.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handlePermanentDelete}
+                  disabled={isDeleting}
+                  className="mt-5 flex min-h-11 items-center gap-2 border border-red-700 px-4 text-xs font-bold uppercase tracking-[0.12em] text-red-700 transition hover:bg-red-700 hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isDeleting ? (
+                    <>
+                      <LoaderCircle size={16} className="animate-spin" />
+                      Deleting
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 size={16} />
+                      Permanently Delete Saree
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </section>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
             <Link
@@ -433,16 +624,18 @@ export default function EditProductPage() {
 
             <button
               type="submit"
-              disabled={isSaving}
+              disabled={isSubmitting}
               className="flex min-h-12 items-center justify-center gap-2 bg-[#4A0F22] px-6 text-xs font-bold uppercase tracking-[0.13em] text-white disabled:opacity-70"
             >
-              {isSaving ? (
+              {isSubmitting ? (
                 <>
-                  <LoaderCircle size={17} className="animate-spin" /> Saving
+                  <LoaderCircle size={17} className="animate-spin" />
+                  Saving
                 </>
               ) : (
                 <>
-                  <Save size={17} /> Save Changes
+                  <Save size={17} />
+                  Save Changes
                 </>
               )}
             </button>
