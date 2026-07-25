@@ -22,7 +22,7 @@ type InventoryProduct = {
   price: number;
   stock_quantity: number;
   low_stock_threshold: number;
-  is_active: boolean;
+  status: string;
 };
 
 function formatMoney(value: number) {
@@ -71,7 +71,7 @@ export default function AdminInventoryPage() {
       const { data, error: productsError } = await supabase
         .from("products")
         .select(
-          "id, title, slug, price, stock_quantity, low_stock_threshold, is_active"
+          "id, title, slug, price, stock_quantity, low_stock_threshold, status"
         )
         .order("stock_quantity", { ascending: true });
 
