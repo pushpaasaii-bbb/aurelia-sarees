@@ -30,6 +30,7 @@ type Category = {
   name: string;
   slug: string;
   description: string | null;
+  image_url: string | null;
 };
 
 type ProductRecord = {
@@ -44,9 +45,7 @@ type ProductImageRecord = {
   image_url: string;
 };
 
-type CollectionCard = Category & {
-  image_url: string | null;
-};
+type CollectionCard = Category;
 
 type SearchResult = {
   id: string;
@@ -104,7 +103,7 @@ export default function Home() {
           .maybeSingle(),
         supabase
           .from("categories")
-          .select("id, name, slug, description")
+          .select("id, name, slug, description, image_url")
           .order("sort_order", { ascending: true }),
         supabase
           .from("products")
@@ -145,12 +144,13 @@ export default function Home() {
             product.category_id === category.id &&
             firstImageByProduct.has(product.id)
         );
+        const productFallbackImage = productForCategory
+          ? firstImageByProduct.get(productForCategory.id) ?? null
+          : null;
 
         return {
           ...category,
-          image_url: productForCategory
-            ? firstImageByProduct.get(productForCategory.id) ?? null
-            : null,
+          image_url: category.image_url || productFallbackImage,
         };
       });
 
