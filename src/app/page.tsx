@@ -306,45 +306,128 @@ export default function Home() {
             </button>
           </div>
 
-          <nav className="mt-14 flex flex-col gap-5 font-serif text-[2.55rem] leading-tight">
-            <Link href="/" onClick={closeMenu}>
-              Home
-            </Link>
+         <nav className="mt-12 border-t border-white/15">
+  <Link
+    href="/"
+    onClick={closeMenu}
+    className="group flex items-center gap-4 border-b border-white/15 py-4"
+  >
+    <span className="w-6 text-[10px] font-bold tracking-[0.14em] text-[#E9C98B]">
+      01
+    </span>
+    <span className="font-serif text-[1.9rem] leading-none tracking-[-0.02em]">
+      Home
+    </span>
+    <ArrowRight
+      size={17}
+      className="ml-auto text-[#E9C98B] transition group-hover:translate-x-1"
+    />
+  </Link>
 
-            <a href="#collections" onClick={closeMenu}>
-              Collections
-            </a>
+  <a
+    href="#collections"
+    onClick={closeMenu}
+    className="group flex items-center gap-4 border-b border-white/15 py-4"
+  >
+    <span className="w-6 text-[10px] font-bold tracking-[0.14em] text-[#E9C98B]">
+      02
+    </span>
+    <span className="font-serif text-[1.9rem] leading-none tracking-[-0.02em]">
+      Collections
+    </span>
+    <ArrowRight
+      size={17}
+      className="ml-auto text-[#E9C98B] transition group-hover:translate-x-1"
+    />
+  </a>
 
-            <Link href="/shop" onClick={closeMenu}>
-              Shop All Sarees
-            </Link>
+  <Link
+    href="/shop"
+    onClick={closeMenu}
+    className="group flex items-center gap-4 border-b border-white/15 py-4"
+  >
+    <span className="w-6 text-[10px] font-bold tracking-[0.14em] text-[#E9C98B]">
+      03
+    </span>
+    <span className="font-serif text-[1.9rem] leading-none tracking-[-0.02em]">
+      Shop Sarees
+    </span>
+    <ArrowRight
+      size={17}
+      className="ml-auto text-[#E9C98B] transition group-hover:translate-x-1"
+    />
+  </Link>
 
-            <Link
-              href="/account"
-              onClick={closeMenu}
-              className="flex items-center gap-3"
-            >
-              <UserRound size={28} strokeWidth={1.4} />
-              My Account
-            </Link>
+  <Link
+    href="/account"
+    onClick={closeMenu}
+    className="group flex items-center gap-4 border-b border-white/15 py-4"
+  >
+    <span className="w-6 text-[10px] font-bold tracking-[0.14em] text-[#E9C98B]">
+      04
+    </span>
+    <UserRound size={18} strokeWidth={1.4} className="text-[#E9C98B]" />
+    <span className="font-serif text-[1.9rem] leading-none tracking-[-0.02em]">
+      My Account
+    </span>
+    <ArrowRight
+      size={17}
+      className="ml-auto text-[#E9C98B] transition group-hover:translate-x-1"
+    />
+  </Link>
 
-            <Link
-              href="/cart"
-              onClick={closeMenu}
-              className="flex items-center gap-3"
-            >
-              <ShoppingBag size={28} strokeWidth={1.4} />
-              Cart {cartCount > 0 ? `(${cartCount})` : ""}
-            </Link>
+  <Link
+    href="/cart"
+    onClick={closeMenu}
+    className="group flex items-center gap-4 border-b border-white/15 py-4"
+  >
+    <span className="w-6 text-[10px] font-bold tracking-[0.14em] text-[#E9C98B]">
+      05
+    </span>
+    <ShoppingBag size={18} strokeWidth={1.4} className="text-[#E9C98B]" />
+    <span className="font-serif text-[1.9rem] leading-none tracking-[-0.02em]">
+      My Cart{cartCount > 0 ? ` (${cartCount})` : ""}
+    </span>
+    <ArrowRight
+      size={17}
+      className="ml-auto text-[#E9C98B] transition group-hover:translate-x-1"
+    />
+  </Link>
 
-            <Link href="/account/orders" onClick={closeMenu}>
-              My Orders
-            </Link>
+  <Link
+    href="/account/orders"
+    onClick={closeMenu}
+    className="group flex items-center gap-4 border-b border-white/15 py-4"
+  >
+    <span className="w-6 text-[10px] font-bold tracking-[0.14em] text-[#E9C98B]">
+      06
+    </span>
+    <span className="font-serif text-[1.9rem] leading-none tracking-[-0.02em]">
+      My Orders
+    </span>
+    <ArrowRight
+      size={17}
+      className="ml-auto text-[#E9C98B] transition group-hover:translate-x-1"
+    />
+  </Link>
 
-            <Link href="/contact" onClick={closeMenu}>
-              Contact & Support
-            </Link>
-          </nav>
+  <Link
+    href="/contact"
+    onClick={closeMenu}
+    className="group flex items-center gap-4 border-b border-white/15 py-4"
+  >
+    <span className="w-6 text-[10px] font-bold tracking-[0.14em] text-[#E9C98B]">
+      07
+    </span>
+    <span className="font-serif text-[1.9rem] leading-none tracking-[-0.02em]">
+      Contact & Support
+    </span>
+    <ArrowRight
+      size={17}
+      className="ml-auto text-[#E9C98B] transition group-hover:translate-x-1"
+    />
+  </Link>
+</nav>
 
           <div className="mt-16 border-t border-white/20 pt-6 text-sm leading-7 text-white/70">
             {settings.tagline}
