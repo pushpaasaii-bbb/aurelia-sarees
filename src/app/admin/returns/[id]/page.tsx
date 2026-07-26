@@ -31,6 +31,10 @@ type ReturnRequest = {
     full_name: string | null;
   } | null;
 };
+type ReturnPhoto = {
+  id: string;
+  signedUrl: string;
+};
 
 const returnStatuses = [
   "return_requested",
@@ -57,6 +61,7 @@ export default function AdminReturnDetailsPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [request, setRequest] = useState<ReturnRequest | null>(null);
+  const [photos, setPhotos] = useState<ReturnPhoto[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -98,6 +103,27 @@ export default function AdminReturnDetailsPage() {
         return;
       }
 
+      const { data: photoRecords } = await supabase
+        .from("return_request_images")
+        .select("id, storage_path")
+        .eq("return_request_id", params.id);
+
+      const signedPhotos: ReturnPhoto[] = [];
+
+      for (const photo of photoRecords ?? []) {
+        const { data: signedUrlData } = await supabase.storage
+          .from("return-images")
+          .createSignedUrl(photo.storage_path, 60 * 60);
+
+        if (signedUrlData?.signedUrl) {
+          signedPhotos.push({
+            id: photo.id,
+            signedUrl: signedUrlData.signedUrl,
+          });
+        }
+      }
+
+      setPhotos(signedPhotos);
       setRequest(data as ReturnRequest);
       setIsLoading(false);
     }
@@ -232,6 +258,41 @@ export default function AdminReturnDetailsPage() {
             </label>
           </section>
         </div>
+
+        {photos.length > 0 && (
+          <section className="mt-6 border border-[#E6DACA] bg-[#FFFDF9] p-6">
+            <h2 className="font-serif text-3xl text-[#4A0F22]">
+              Customer Photos
+            </h2>
+
+            <p className="mt-2 text-sm text-[#6E1834]/65">
+              Review the customer&apos;s supporting photos before approving
+              the return or exchange.
+            </p>
+
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {photos.map((photo, index) => (
+                <a
+                  key={photo.id}
+                  href={photo.signedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group block"
+                  aria-label={`Open customer return photo ${index + 1}`}
+                >
+                  <span
+                    role="img"
+                    aria-label={`Customer return photo ${index + 1}`}
+                    className="block aspect-square border border-[#E6DACA] bg-[#FAF7F2] bg-cover bg-center transition group-hover:border-[#B68A42]"
+                    style={{
+                      backgroundImage: `url("${photo.signedUrl}")`,
+                    }}
+                  />
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="mt-6 border border-[#E6DACA] bg-[#FFFDF9] p-6">
           <h2 className="font-serif text-3xl text-[#4A0F22]">Pickup & Return Courier</h2>

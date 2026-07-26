@@ -127,24 +127,34 @@ export default function ReturnRequestPage() {
     }
 
     for (const file of files) {
-      const extension = file.name.split(".").pop() || "jpg";
-      const filePath = `${user.id}/${request.id}/${crypto.randomUUID()}.${extension}`;
+      const extension =
+        file.name.split(".").pop()?.toLowerCase() || "jpg";
+
+      const filePath =
+        `${user.id}/${request.id}/${crypto.randomUUID()}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from("return-images")
-        .upload(filePath, file, { upsert: false });
-
-      if (uploadError) continue;
-
-      const { data: signedUrlData } = await supabase.storage
-        .from("return-images")
-        .createSignedUrl(filePath, 60 * 60 * 24 * 365);
-
-      if (signedUrlData?.signedUrl) {
-        await supabase.from("return_request_images").insert({
-          return_request_id: request.id,
-          image_url: signedUrlData.signedUrl,
+        .upload(filePath, file, {
+          upsert: false,
+          contentType: file.type,
         });
+
+      if (uploadError) {
+        continue;
+      }
+
+      const { error: imageRecordError } = await supabase
+        .from("return_request_images")
+        .insert({
+          return_request_id: request.id,
+          storage_path: filePath,
+        });
+
+      if (imageRecordError) {
+        await supabase.storage
+          .from("return-images")
+          .remove([filePath]);
       }
     }
 
