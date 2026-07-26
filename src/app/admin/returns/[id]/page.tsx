@@ -31,6 +31,7 @@ type ReturnRequest = {
     full_name: string | null;
   } | null;
 };
+
 type ReturnPhoto = {
   id: string;
   signedUrl: string;
@@ -62,6 +63,8 @@ export default function AdminReturnDetailsPage() {
   const router = useRouter();
   const [request, setRequest] = useState<ReturnRequest | null>(null);
   const [photos, setPhotos] = useState<ReturnPhoto[]>([]);
+  const [savedStatus, setSavedStatus] = useState("");
+  const [adminUserId, setAdminUserId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -78,6 +81,8 @@ export default function AdminReturnDetailsPage() {
         router.replace(`/login?next=/admin/returns/${params.id}`);
         return;
       }
+
+      setAdminUserId(user.id);
 
       const { data: isAdmin } = await supabase.rpc("is_admin");
 
@@ -124,6 +129,7 @@ export default function AdminReturnDetailsPage() {
       }
 
       setPhotos(signedPhotos);
+      setSavedStatus((data as ReturnRequest).status);
       setRequest(data as ReturnRequest);
       setIsLoading(false);
     }
@@ -136,14 +142,15 @@ export default function AdminReturnDetailsPage() {
   }
 
   async function saveRequest() {
-    if (!request) return;
+    if (!request || !adminUserId || isSaving) return;
 
     setIsSaving(true);
     setMessage("");
 
     const supabase = createClient();
+    const statusChanged = request.status !== savedStatus;
 
-    const { error } = await supabase
+    const { error: updateError } = await supabase
       .from("return_requests")
       .update({
         status: request.status,
@@ -162,16 +169,42 @@ export default function AdminReturnDetailsPage() {
       })
       .eq("id", request.id);
 
-    if (!error) {
-      await supabase.from("return_status_history").insert({
-        return_request_id: request.id,
-        status: request.status,
-        note: request.admin_note || request.quality_check_note || null,
-      });
+    if (updateError) {
+      setIsSaving(false);
+      setMessage(updateError.message);
+      return;
+    }
+
+    if (statusChanged) {
+      const { error: historyError } = await supabase
+        .from("return_status_history")
+        .insert({
+          return_request_id: request.id,
+          status: request.status,
+          note:
+            request.admin_note ||
+            request.quality_check_note ||
+            null,
+          created_by: adminUserId,
+        });
+
+      setSavedStatus(request.status);
+
+      if (historyError) {
+        setIsSaving(false);
+        setMessage(
+          `Return request was saved, but its timeline update failed: ${historyError.message}`
+        );
+        return;
+      }
     }
 
     setIsSaving(false);
-    setMessage(error ? error.message : "Return request saved successfully.");
+    setMessage(
+      statusChanged
+        ? "Return status and details saved successfully."
+        : "Return details saved successfully. No duplicate status update was created."
+    );
   }
 
   if (isLoading || !request) {
